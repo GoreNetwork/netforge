@@ -1,0 +1,57 @@
+---
+# Sets `reservation` (the Nautobot prefix) and `reservation_existed`.
+- name: Find the parent prefix
+  ansible.builtin.uri:
+    url: "{{ nautobot_url }}/api/ipam/prefixes/?prefix={{ reserve_parent_prefix | urlencode }}"
+    headers: "{{ nautobot_headers }}"
+  register: parent
+  failed_when: parent.status != 200 or parent.json.count != 1
+
+- name: Find the Reserved status
+  ansible.builtin.uri:
+    url: "{{ nautobot_url }}/api/extras/statuses/?name=Reserved"
+    headers: "{{ nautobot_headers }}"
+  register: reserved_status
+  failed_when: reserved_status.status != 200 or reserved_status.json.count != 1
+
+# Nautobot has no exact description filter, so `q` narrows the search and
+# the match is checked here.
+- name: Look for a subnet already reserved with this label
+  ansible.builtin.uri:
+    url: >-
+      {{ nautobot_url }}/api/ipam/prefixes/?within={{ reserve_parent_prefix | urlencode }}&q={{ reserve_label | urlencode }}&limit=1000
+    headers: "{{ nautobot_headers }}"
+  register: search
+
+- name: Keep exact matches
+  ansible.builtin.set_fact:
+    existing: "{{ search.json.results | selectattr('description', 'equalto', reserve_label) | list }}"
+
+- name: Refuse a reservation that doesn't match the requested size
+  ansible.builtin.assert:
+    that: existing[0].prefix_length == reserve_prefix_length | int
+    fail_msg: "{{ reserve_label }} already holds {{ existing[0].prefix }}, which is not a /{{ reserve_prefix_length }}."
+  when: existing | length > 0
+
+- name: Reserve the next free subnet
+  ansible.builtin.uri:
+    url: "{{ nautobot_url }}/api/ipam/prefixes/{{ parent.json.results[0].id }}/available-prefixes/"
+    method: POST
+    headers: "{{ nautobot_headers }}"
+    body_format: json
+    body:
+      prefix_length: "{{ reserve_prefix_length | int }}"
+      status: "{{ reserved_status.json.results[0].id }}"
+      description: "{{ reserve_label }}"
+    status_code: 201
+  register: allocation
+  when: existing | length == 0
+
+- name: Record the reservation
+  ansible.builtin.set_fact:
+    reservation: "{{ existing[0] if existing | length > 0 else allocation.json }}"
+    reservation_existed: "{{ existing | length > 0 }}"
+
+- name: Show the reservation
+  ansible.builtin.debug:
+    msg: "{{ reserve_label }} holds {{ reservation.prefix }}"

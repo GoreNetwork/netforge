@@ -1,0 +1,4 @@
+---
+backup_root: /backups
+# Saves the running config to startup before backing it up.
+backup_save_config: true

@@ -1,0 +1,17 @@
+---
+- name: Back up device configs
+  hosts: cisco_ios
+  gather_facts: false
+
+  tasks:
+    - name: Save and copy the config
+      ansible.builtin.include_role:
+        name: ios_backup_config
+
+    - name: Write the task result
+      ansible.builtin.copy:
+        dest: "{{ lookup('ansible.builtin.env', 'NETFORGE_OUTPUT_FILE') }}"
+        mode: "0600"
+        content: "{{ {'folder': backup_folder, 'devices': ansible_play_hosts | sort} | to_json }}"
+      delegate_to: localhost
+      run_once: true

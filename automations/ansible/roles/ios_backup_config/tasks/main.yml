@@ -1,0 +1,35 @@
+---
+# Writes <backup_root>/<date-time>/<device>.cfg and sets `backup_folder`.
+# Every device in a run shares one date-time folder.
+- name: Choose the backup folder
+  ansible.builtin.set_fact:
+    backup_folder: "{{ backup_root }}/{{ now(utc=true, fmt='%Y-%m-%d_%H%M%S') }}"
+  run_once: true
+
+- name: Save the running config
+  cisco.ios.ios_command:
+    commands:
+      - write memory
+  when: backup_save_config | bool
+
+- name: Read the running config
+  cisco.ios.ios_command:
+    commands:
+      - show running-config
+  register: running_config
+
+# Created only now, so a run that can't reach any device leaves no empty folder.
+- name: Create the backup folder
+  ansible.builtin.file:
+    path: "{{ backup_folder }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  run_once: true
+
+- name: Write the backup
+  ansible.builtin.copy:
+    dest: "{{ backup_folder }}/{{ inventory_hostname }}.cfg"
+    content: "{{ running_config.stdout[0] }}\n"
+    mode: "0640"
+  delegate_to: localhost

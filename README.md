@@ -89,6 +89,32 @@ Always use `pattern` on free-text variables. Your playbook or script receives
 this text as data, but anything it builds from that text, such as a shell command
 or device config, is only as safe as the validation.
 
+## Sharing steps between tasks
+
+Put anything used by more than one task in a role under
+`automations/ansible/roles/<name>/`, then call it from any playbook. A task's
+playbook should stay short: mostly a list of roles. For example, a role that
+applies an ACL can back both a standalone update task and the initial setup:
+
+```yaml
+- name: Initial setup
+  hosts: cisco_ios
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_role:
+        name: ios_acl
+      vars:
+        acl_name: SNMP_ACCESS
+    - ansible.builtin.include_role:
+        name: ios_acl
+      vars:
+        acl_name: VTY_ACCESS
+```
+
+Keep a role's inputs in `defaults/main.yml`, as in `nautobot_reserve_prefix`, and
+give them a role-specific prefix so that roles don't collide. Roles run in the
+calling task, so all their steps appear in one log with one status.
+
 ## The engine contract
 
 All engines work the same way, which is what keeps them interchangeable. The
@@ -165,6 +191,11 @@ safe.
 
 `docker compose down` keeps your data. **`docker compose down -v` deletes all of it.**
 
+Config backups are different: they go to a folder on the host, `./backups` by
+default, so they survive even `down -v`. Set `BACKUP_DIR` in `.env` to use another
+location. Each run writes `<date-time>/<device>.cfg`, with times in UTC. Backups
+contain device secrets, so restrict access to the folder. It is excluded from git.
+
 ## Moving to Kubernetes
 
 The stack was built to map across without code changes:
@@ -175,6 +206,7 @@ The stack was built to map across without code changes:
 | `migrate`, `seed` | Jobs |
 | `nautobot-volumes` | Not needed; use `securityContext.fsGroup` |
 | Named volumes | PersistentVolumeClaims, or managed Postgres and Redis |
+| `./backups` bind mount | A ReadWriteMany PersistentVolumeClaim shared by the workers |
 | `.env` | Secrets |
 | `./automations` bind mount | Not needed; the files are baked into the image |
 
@@ -189,6 +221,13 @@ Usernames live in Nautobot, in each device's SSH username field. The password
 goes in `.env` as `LAB_DEVICE_PASSWORD` and reaches Ansible as an environment
 variable, so it is never readable in Nautobot or committed. After changing it,
 run `docker compose up -d worker`. All devices currently share one password.
+
+The account needs privilege 15 so that it can run `show running-config` and
+`write memory`.
+
+The Cisco 3745s only support `diffie-hellman-group1-sha1` and `ssh-rsa`, so
+`paramiko` is held on 3.x in `requirements/worker.txt`. Move to a current release
+once these devices are retired.
 
 ## Tests
 
