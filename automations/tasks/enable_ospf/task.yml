@@ -1,0 +1,20 @@
+title: Enable OSPF
+description: Enables OSPF on all interfaces of every Cisco IOS router.
+engine: ansible
+entrypoint: playbook.yml
+timeout_seconds: 300
+variables:
+  - name: process_id
+    label: OSPF process ID
+    type: integer
+    required: false
+    default: 1
+    min: 1
+    max: 65535
+  - name: area
+    label: OSPF area
+    type: integer
+    required: false
+    default: 0
+    min: 0
+    max: 4294967295

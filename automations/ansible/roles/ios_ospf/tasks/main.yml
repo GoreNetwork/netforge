@@ -1,0 +1,9 @@
+---
+# The 0.0.0.0 wildcard matches every interface with an IP address, including any
+# added later. Saves to startup only if the config changed.
+- name: Enable OSPF on all interfaces
+  cisco.ios.ios_config:
+    parents: "router ospf {{ ospf_process_id }}"
+    lines:
+      - "network 0.0.0.0 255.255.255.255 area {{ ospf_area }}"
+    save_when: changed
