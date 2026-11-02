@@ -1,0 +1,23 @@
+{% if tasks %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Task</th><th>Engine</th><th>Via</th><th>Submitted (UTC)</th><th>ID</th></tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr>
+        <td><span class="status status-{{ task.status }}">{{ task.status }}</span></td>
+        <td>{{ task.task_type }}</td>
+        <td>{{ task.engine }}</td>
+        <td>{{ task.submitted_via }}</td>
+        <td>{{ task.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td><a class="mono" href="/tasks/{{ task.id }}">{{ task.id|string|truncate(8, True, "") }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No tasks yet.</p>
+{% endif %}

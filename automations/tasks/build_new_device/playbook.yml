@@ -1,0 +1,79 @@
+---
+# Later build steps go after the reservation, using `reservation.prefix`.
+- name: Build new device
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    parent_prefix: 10.0.0.0/16
+    prefix_length: 24
+    nautobot_url: "{{ lookup('ansible.builtin.env', 'NAUTOBOT_URL') }}"
+    nautobot_headers:
+      Authorization: "Token {{ lookup('ansible.builtin.env', 'NAUTOBOT_TOKEN') }}"
+      Accept: application/json
+
+  tasks:
+    - name: Find the parent prefix
+      ansible.builtin.uri:
+        url: "{{ nautobot_url }}/api/ipam/prefixes/?prefix={{ parent_prefix | urlencode }}"
+        headers: "{{ nautobot_headers }}"
+      register: parent
+      failed_when: parent.status != 200 or parent.json.count != 1
+
+    - name: Find the Reserved status
+      ansible.builtin.uri:
+        url: "{{ nautobot_url }}/api/extras/statuses/?name=Reserved"
+        headers: "{{ nautobot_headers }}"
+      register: reserved_status
+      failed_when: reserved_status.status != 200 or reserved_status.json.count != 1
+
+    # Nautobot has no exact description filter, so `q` narrows the search and
+    # the match is checked here.
+    - name: Look for a subnet already reserved for this device
+      ansible.builtin.uri:
+        url: >-
+          {{ nautobot_url }}/api/ipam/prefixes/?within={{ parent_prefix | urlencode }}&q={{ device_name | urlencode }}&limit=1000
+        headers: "{{ nautobot_headers }}"
+      register: search
+
+    - name: Keep exact matches
+      ansible.builtin.set_fact:
+        existing: "{{ search.json.results | selectattr('description', 'equalto', device_name) | list }}"
+
+    - name: Refuse a reservation that doesn't match the requested size
+      ansible.builtin.assert:
+        that: existing[0].prefix_length == prefix_length | int
+        fail_msg: "{{ device_name }} already holds {{ existing[0].prefix }}, which is not a /{{ prefix_length }}."
+      when: existing | length > 0
+
+    - name: Reserve the next free subnet
+      ansible.builtin.uri:
+        url: "{{ nautobot_url }}/api/ipam/prefixes/{{ parent.json.results[0].id }}/available-prefixes/"
+        method: POST
+        headers: "{{ nautobot_headers }}"
+        body_format: json
+        body:
+          prefix_length: "{{ prefix_length | int }}"
+          status: "{{ reserved_status.json.results[0].id }}"
+          description: "{{ device_name }}"
+        status_code: 201
+      register: allocation
+      when: existing | length == 0
+
+    - name: Record the reservation
+      ansible.builtin.set_fact:
+        reservation: "{{ existing[0] if existing | length > 0 else allocation.json }}"
+
+    - name: Show the reservation
+      ansible.builtin.debug:
+        msg: "{{ device_name }} holds {{ reservation.prefix }}"
+
+    - name: Write the task result
+      ansible.builtin.copy:
+        dest: "{{ lookup('ansible.builtin.env', 'NETFORGE_OUTPUT_FILE') }}"
+        mode: "0600"
+        content: >-
+          {{ {'device_name': device_name,
+              'prefix': reservation.prefix,
+              'nautobot_id': reservation.id,
+              'already_reserved': existing | length > 0} | to_json }}

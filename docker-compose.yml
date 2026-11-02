@@ -1,0 +1,218 @@
+# Run `python scripts/init-env.py` once before the first `docker compose up`.
+name: netforge
+
+x-nautobot-env: &nautobot-env
+  NAUTOBOT_ALLOWED_HOSTS: "*"
+  NAUTOBOT_DB_ENGINE: django.db.backends.postgresql
+  NAUTOBOT_DB_HOST: nautobot-db
+  NAUTOBOT_DB_NAME: nautobot
+  NAUTOBOT_DB_USER: nautobot
+  NAUTOBOT_DB_PASSWORD: ${NAUTOBOT_DB_PASSWORD:?run scripts/init-env.py}
+  NAUTOBOT_REDIS_HOST: nautobot-redis
+  NAUTOBOT_REDIS_PASSWORD: ${NAUTOBOT_REDIS_PASSWORD:?run scripts/init-env.py}
+  NAUTOBOT_SECRET_KEY: ${NAUTOBOT_SECRET_KEY:?run scripts/init-env.py}
+
+x-nautobot-service: &nautobot-service
+  image: networktocode/nautobot:${NAUTOBOT_IMAGE_TAG:-3.2.8-py3.12}
+  restart: unless-stopped
+  volumes:
+    - nautobot_media:/opt/nautobot/media
+    - nautobot_git:/opt/nautobot/git
+    - nautobot_jobs:/opt/nautobot/jobs
+
+x-netforge-env: &netforge-env
+  DATABASE_URL: postgresql+psycopg://netforge:${TASKS_DB_PASSWORD:?run scripts/init-env.py}@tasks-db:5432/netforge
+  REDIS_URL: redis://:${QUEUE_REDIS_PASSWORD:?run scripts/init-env.py}@queue:6379/0
+  NETFORGE_AUTOMATIONS_DIR: /app/automations
+
+services:
+  # --- Netforge -------------------------------------------------------------
+  api:
+    build: { context: ., target: api }
+    image: netforge-api:dev
+    restart: unless-stopped
+    environment:
+      <<: *netforge-env
+      NETFORGE_API_TOKEN: ${NETFORGE_API_TOKEN:?run scripts/init-env.py}
+      NAUTOBOT_PUBLIC_URL: http://localhost:${NAUTOBOT_PORT:-8081}
+    ports:
+      - "127.0.0.1:${NETFORGE_PORT:-8080}:8080"
+    volumes:
+      - ./automations:/app/automations:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      queue: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # Handles the ansible and python engines. Engines that need other tooling
+  # get their own service, image target and WORKER_ENGINES list.
+  worker:
+    build: { context: ., target: worker }
+    image: netforge-worker:dev
+    restart: unless-stopped
+    stop_grace_period: 2m
+    environment:
+      <<: *netforge-env
+      WORKER_ENGINES: ansible,python
+      NAUTOBOT_URL: http://nautobot:8080
+      NAUTOBOT_TOKEN: ${NAUTOBOT_API_TOKEN:?run scripts/init-env.py}
+    volumes:
+      - ./automations:/app/automations:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      queue: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+
+  # One-shot jobs. These map to Kubernetes Jobs.
+  migrate:
+    image: netforge-api:dev
+    build: { context: ., target: api }
+    command: ["alembic", "upgrade", "head"]
+    environment: *netforge-env
+    depends_on:
+      tasks-db: { condition: service_healthy }
+
+  seed:
+    image: netforge-api:dev
+    build: { context: ., target: api }
+    command: ["python", "-m", "netforge.seed"]
+    environment:
+      NAUTOBOT_URL: http://nautobot:8080
+      NAUTOBOT_TOKEN: ${NAUTOBOT_API_TOKEN:?run scripts/init-env.py}
+    depends_on:
+      nautobot: { condition: service_healthy }
+
+  tasks-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netforge
+      POSTGRES_USER: netforge
+      POSTGRES_PASSWORD: ${TASKS_DB_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - tasks_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netforge -d netforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${QUEUE_REDIS_PASSWORD:?run scripts/init-env.py}"]
+    volumes:
+      - queue_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDISCLI_AUTH\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    environment:
+      REDISCLI_AUTH: ${QUEUE_REDIS_PASSWORD:?run scripts/init-env.py}
+
+  # --- Nautobot -------------------------------------------------------------
+  # New named volumes belong to root, but Nautobot runs unprivileged.
+  # On Kubernetes, set securityContext.fsGroup instead.
+  nautobot-volumes:
+    image: networktocode/nautobot:${NAUTOBOT_IMAGE_TAG:-3.2.8-py3.12}
+    user: root
+    entrypoint: ["chown", "-R", "nautobot:nautobot", "/opt/nautobot/media", "/opt/nautobot/git", "/opt/nautobot/jobs"]
+    volumes:
+      - nautobot_media:/opt/nautobot/media
+      - nautobot_git:/opt/nautobot/git
+      - nautobot_jobs:/opt/nautobot/jobs
+
+  nautobot:
+    <<: *nautobot-service
+    environment:
+      <<: *nautobot-env
+      NAUTOBOT_CREATE_SUPERUSER: "true"
+      NAUTOBOT_SUPERUSER_NAME: admin
+      NAUTOBOT_SUPERUSER_EMAIL: admin@example.com
+      NAUTOBOT_SUPERUSER_PASSWORD: ${NAUTOBOT_SUPERUSER_PASSWORD:?run scripts/init-env.py}
+      NAUTOBOT_SUPERUSER_API_TOKEN: ${NAUTOBOT_API_TOKEN:?run scripts/init-env.py}
+    ports:
+      - "127.0.0.1:${NAUTOBOT_PORT:-8081}:8080"
+    depends_on:
+      nautobot-volumes: { condition: service_completed_successfully }
+      nautobot-db: { condition: service_healthy }
+      nautobot-redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 10m
+
+  nautobot-worker:
+    <<: *nautobot-service
+    command: ["nautobot-server", "celery", "worker", "--loglevel", "INFO"]
+    environment:
+      <<: *nautobot-env
+      NAUTOBOT_DOCKER_SKIP_INIT: "true"
+    depends_on:
+      nautobot: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "nautobot-server celery inspect ping --destination celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 2m
+
+  nautobot-beat:
+    <<: *nautobot-service
+    command: ["nautobot-server", "celery", "beat", "--loglevel", "INFO"]
+    environment:
+      <<: *nautobot-env
+      NAUTOBOT_DOCKER_SKIP_INIT: "true"
+    depends_on:
+      nautobot: { condition: service_healthy }
+    healthcheck:
+      # Beat has no ping command, so this only confirms the process is alive.
+      test: ["CMD-SHELL", "grep -aq 'celery' /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  nautobot-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nautobot
+      POSTGRES_USER: nautobot
+      POSTGRES_PASSWORD: ${NAUTOBOT_DB_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - nautobot_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nautobot -d nautobot"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  nautobot-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${NAUTOBOT_REDIS_PASSWORD:?run scripts/init-env.py}"]
+    environment:
+      REDISCLI_AUTH: ${NAUTOBOT_REDIS_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - nautobot_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDISCLI_AUTH\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  tasks_db_data:
+  queue_data:
+  nautobot_db_data:
+  nautobot_redis_data:
+  nautobot_media:
+  nautobot_git:
+  nautobot_jobs:

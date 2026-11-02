@@ -1,0 +1,19 @@
+title: Build new device
+description: Reserves the next free subnet in 10.0.0.0/16 and labels it for the new device.
+engine: ansible
+entrypoint: playbook.yml
+timeout_seconds: 600
+variables:
+  - name: device_name
+    label: Device name
+    pattern: "[A-Za-z0-9][A-Za-z0-9._-]{0,62}"
+    pattern_error: can only contain letters, numbers, dots, dashes and underscores, and must start with a letter or number
+    help: The reserved subnet is labelled with this name.
+  - name: prefix_length
+    label: Subnet size
+    type: integer
+    required: false
+    default: 24
+    min: 17
+    max: 30
+    help: Prefix length from /17 to /30.

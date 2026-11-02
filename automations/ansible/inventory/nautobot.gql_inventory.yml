@@ -1,0 +1,8 @@
+# Devices come from Nautobot. NAUTOBOT_URL and NAUTOBOT_TOKEN are read from the
+# environment of the worker.
+plugin: networktocode.nautobot.gql_inventory
+validate_certs: false
+group_by:
+  - location.name
+  - role.name
+  - platform.name

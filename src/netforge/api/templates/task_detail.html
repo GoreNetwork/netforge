@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ task.task_type }} · Netforge{% endblock %}
+{% block content %}
+<section>
+  <p class="crumb"><a href="/">Tasks</a> / <span class="mono">{{ task.id }}</span></p>
+  <div {% if active %}data-poll="/ui/tasks/{{ task.id }}"{% endif %}>{% include "_task_panel.html" %}</div>
+</section>
+{% endblock %}

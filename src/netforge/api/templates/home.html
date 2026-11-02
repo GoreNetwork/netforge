@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h1>New request</h1>
+  <div class="cards">
+    {% for definition in definitions %}
+    <a class="card" href="/tasks/new/{{ definition.name }}">
+      <span class="engine">{{ definition.engine }}</span>
+      <h2>{{ definition.title }}</h2>
+      <p>{{ definition.description }}</p>
+    </a>
+    {% else %}
+    <p class="muted">No task types found. Add one under automations/tasks.</p>
+    {% endfor %}
+  </div>
+</section>
+<section>
+  <div class="section-head">
+    <h1>Recent tasks</h1>
+    {% if nautobot_url %}<a href="{{ nautobot_url }}">Open Nautobot</a>{% endif %}
+  </div>
+  <div data-poll="/ui/tasks">{% include "_tasks_table.html" %}</div>
+</section>
+{% endblock %}

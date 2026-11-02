@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ definition.title }} · Netforge{% endblock %}
+{% block content %}
+<section class="narrow">
+  <p class="crumb"><a href="/">Tasks</a> / {{ definition.title }}</p>
+  <h1>{{ definition.title }}</h1>
+  <p class="muted">{{ definition.description }}</p>
+  <form method="post">
+    {% for variable in definition.variables %}
+    {% set value = values.get(variable.name, variable.default if variable.default is not none else "") %}
+    <div class="field">
+      <label for="{{ variable.name }}">{{ variable.label }}{% if variable.required %} <span class="required">*</span>{% endif %}</label>
+      {% if variable.type == "choice" %}
+      <select id="{{ variable.name }}" name="{{ variable.name }}">
+        {% for choice in variable.choices %}
+        <option value="{{ choice }}"{% if choice == value %} selected{% endif %}>{{ choice }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input id="{{ variable.name }}" name="{{ variable.name }}" value="{{ value }}"
+             type="{{ 'number' if variable.type == 'integer' else 'text' }}"
+             {% if variable.min is not none %}min="{{ variable.min }}"{% endif %}
+             {% if variable.max is not none %}max="{{ variable.max }}"{% endif %}
+             {% if variable.required %}required{% endif %}
+             autocomplete="off">
+      {% endif %}
+      {% if variable.help %}<p class="help">{{ variable.help }}</p>{% endif %}
+      {% if errors.get(variable.name) %}<p class="error">{{ variable.label }} {{ errors[variable.name] }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit">Submit request</button>
+  </form>
+</section>
+{% endblock %}

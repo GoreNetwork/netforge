@@ -1,0 +1,24 @@
+{% if not active %}<span data-poll-stop hidden></span>{% endif %}
+<div class="section-head">
+  <h1>{{ task.task_type }}</h1>
+  <span class="status status-{{ task.status }}">{{ task.status }}</span>
+</div>
+<dl class="facts">
+  <div><dt>Engine</dt><dd>{{ task.engine }}</dd></div>
+  <div><dt>Submitted via</dt><dd>{{ task.submitted_via }}</dd></div>
+  <div><dt>Worker</dt><dd>{{ task.worker_id or "not assigned" }}</dd></div>
+  <div><dt>Submitted (UTC)</dt><dd>{{ task.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd></div>
+  <div><dt>Finished (UTC)</dt><dd>{{ task.finished_at.strftime("%Y-%m-%d %H:%M:%S") if task.finished_at else "not finished" }}</dd></div>
+</dl>
+{% if task.error %}
+<div class="notice notice-error"><strong>Task failed</strong><pre>{{ task.error }}</pre></div>
+{% endif %}
+<h2>Variables</h2>
+<pre class="block">{{ task.variables|tojson(indent=2) }}</pre>
+{% if task.result %}
+<h2>Result</h2>
+<pre class="block">{{ task.result|tojson(indent=2) }}</pre>
+{% endif %}
+<h2>Log</h2>
+<pre class="block log">{% for entry in logs %}{{ entry.line }}
+{% else %}No output yet.{% endfor %}</pre>
