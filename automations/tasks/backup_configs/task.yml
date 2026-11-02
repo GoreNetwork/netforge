@@ -1,0 +1,5 @@
+title: Back up device configs
+description: Saves the running config on every network device, then copies it to a dated backup folder.
+engine: ansible
+entrypoint: playbook.yml
+timeout_seconds: 900

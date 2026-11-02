@@ -1,0 +1,9 @@
+---
+# Each item: device, name, type, enabled, description, and addresses, a list of
+# {address, prefix}.
+sync_interfaces: []
+# Lists the changes without making them.
+sync_preview: true
+sync_namespace: Global
+nautobot_url: "{{ lookup('ansible.builtin.env', 'NAUTOBOT_URL') }}"
+nautobot_token: "{{ lookup('ansible.builtin.env', 'NAUTOBOT_TOKEN') }}"

@@ -2,10 +2,12 @@
 list it here. See "Adding an engine" in the README."""
 from netforge.worker.engines.ansible import AnsibleEngine
 from netforge.worker.engines.base import Engine, EngineError, RunContext
+from netforge.worker.engines.pipeline import PipelineEngine
 from netforge.worker.engines.python import PythonEngine
 
 ENGINES: dict[str, type[Engine]] = {
     AnsibleEngine.name: AnsibleEngine,
+    PipelineEngine.name: PipelineEngine,
     PythonEngine.name: PythonEngine,
 }
 

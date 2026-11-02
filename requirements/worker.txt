@@ -1,3 +1,6 @@
 ansible-core==2.21.5
 netutils==1.19.2
+# Held on 3.x: later releases drop the diffie-hellman-group1-sha1 key exchange
+# and ssh-rsa host keys, which are all the Cisco 3745s offer.
+paramiko==3.5.1
 pynautobot==3.2.0

@@ -89,6 +89,52 @@ Always use `pattern` on free-text variables. Your playbook or script receives
 this text as data, but anything it builds from that text, such as a shell command
 or device config, is only as safe as the validation.
 
+## Tasks with several steps
+
+To use a different engine for each stage, set the engine to `pipeline` and list
+the steps. `sync_nautobot_from_backups` parses configs in Python, then makes its
+Nautobot API calls with Ansible:
+
+```yaml
+engine: pipeline
+steps:
+  - engine: python
+    entrypoint: parse_configs.py
+  - engine: ansible
+    entrypoint: playbook.yml
+```
+
+Each step's result is added to the variables of the steps after it, so the
+playbook receives what the script wrote to `NETFORGE_OUTPUT_FILE` as Ansible
+variables. The first failure stops the task, and the last step's result becomes
+the task's result. `timeout_seconds` applies to each step separately.
+
+## Sharing steps between tasks
+
+Put anything used by more than one task in a role under
+`automations/ansible/roles/<name>/`, then call it from any playbook. A task's
+playbook should stay short: mostly a list of roles. For example, a role that
+applies an ACL can back both a standalone update task and the initial setup:
+
+```yaml
+- name: Initial setup
+  hosts: cisco_ios
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_role:
+        name: ios_acl
+      vars:
+        acl_name: SNMP_ACCESS
+    - ansible.builtin.include_role:
+        name: ios_acl
+      vars:
+        acl_name: VTY_ACCESS
+```
+
+Keep a role's inputs in `defaults/main.yml`, as in `nautobot_reserve_prefix`, and
+give them a role-specific prefix so that roles don't collide. Roles run in the
+calling task, so all their steps appear in one log with one status.
+
 ## The engine contract
 
 All engines work the same way, which is what keeps them interchangeable. The
@@ -165,6 +211,22 @@ safe.
 
 `docker compose down` keeps your data. **`docker compose down -v` deletes all of it.**
 
+Config backups are different: they go to a folder on the host, `./backups` by
+default, so they survive even `down -v`. Set `BACKUP_DIR` in `.env` to use another
+location. Each run writes `<date-time>/<device>.cfg`, with times in UTC. Backups
+contain device secrets, so restrict access to the folder. It is excluded from git,
+apart from the demo backups described below.
+
+## Demo data in this repo
+
+So you can see what a working install holds, this repo includes the lab's `.env`
+and two example backups under `backups/`. They were added with `git add -f`, so
+new backups and any new `.env` stay ignored.
+
+These credentials are public demo values for a three-router lab. **Never reuse
+them.** For anything beyond the demo, delete `.env`, run `scripts/init-env.py` to
+generate new secrets, and set your own device password.
+
 ## Moving to Kubernetes
 
 The stack was built to map across without code changes:
@@ -175,6 +237,7 @@ The stack was built to map across without code changes:
 | `migrate`, `seed` | Jobs |
 | `nautobot-volumes` | Not needed; use `securityContext.fsGroup` |
 | Named volumes | PersistentVolumeClaims, or managed Postgres and Redis |
+| `./backups` bind mount | A ReadWriteMany PersistentVolumeClaim shared by the workers |
 | `.env` | Secrets |
 | `./automations` bind mount | Not needed; the files are baked into the image |
 
@@ -187,8 +250,15 @@ localhost, because it currently has none.
 
 Usernames live in Nautobot, in each device's SSH username field. The password
 goes in `.env` as `LAB_DEVICE_PASSWORD` and reaches Ansible as an environment
-variable, so it is never readable in Nautobot or committed. After changing it,
-run `docker compose up -d worker`. All devices currently share one password.
+variable, so it is never readable in Nautobot. After changing it, run
+`docker compose up -d worker`. All devices currently share one password.
+
+The account needs privilege 15 so that it can run `show running-config` and
+`write memory`.
+
+The Cisco 3745s only support `diffie-hellman-group1-sha1` and `ssh-rsa`, so
+`paramiko` is held on 3.x in `requirements/worker.txt`. Move to a current release
+once these devices are retired.
 
 ## Tests
 

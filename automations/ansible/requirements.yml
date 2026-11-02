@@ -1,2 +1,4 @@
 collections:
+  - name: ansible.netcommon
+  - name: cisco.ios
   - name: networktocode.nautobot

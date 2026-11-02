@@ -10,7 +10,8 @@ query:
     platform:
       name:
       napalm_driver:
+      network_driver:
 group_by:
   - location.name
   - role.name
-  - platform.name
+  - platform.network_driver

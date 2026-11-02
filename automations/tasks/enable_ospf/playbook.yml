@@ -1,0 +1,20 @@
+---
+- name: Enable OSPF
+  hosts: cisco_ios:&Router
+  gather_facts: false
+
+  tasks:
+    - name: Enable OSPF on all interfaces
+      ansible.builtin.include_role:
+        name: ios_ospf
+      vars:
+        ospf_process_id: "{{ process_id }}"
+        ospf_area: "{{ area }}"
+
+    - name: Write the task result
+      ansible.builtin.copy:
+        dest: "{{ lookup('ansible.builtin.env', 'NETFORGE_OUTPUT_FILE') }}"
+        mode: "0600"
+        content: "{{ {'process_id': process_id, 'area': area, 'devices': ansible_play_hosts | sort} | to_json }}"
+      delegate_to: localhost
+      run_once: true

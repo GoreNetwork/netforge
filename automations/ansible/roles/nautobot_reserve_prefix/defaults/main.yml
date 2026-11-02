@@ -1,0 +1,8 @@
+---
+# Set reserve_label when calling this role. The reserved subnet is labelled with it.
+reserve_parent_prefix: 10.0.0.0/16
+reserve_prefix_length: 24
+nautobot_url: "{{ lookup('ansible.builtin.env', 'NAUTOBOT_URL') }}"
+nautobot_headers:
+  Authorization: "Token {{ lookup('ansible.builtin.env', 'NAUTOBOT_TOKEN') }}"
+  Accept: application/json

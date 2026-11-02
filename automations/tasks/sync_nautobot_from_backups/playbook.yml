@@ -1,0 +1,25 @@
+---
+# Step 2: `backup` and `interfaces` come from parse_configs.py.
+- name: Sync Nautobot from config backups
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Update Nautobot
+      ansible.builtin.include_role:
+        name: nautobot_sync_interfaces
+      vars:
+        sync_interfaces: "{{ interfaces }}"
+        sync_preview: "{{ mode != 'apply' }}"
+
+    - name: Write the task result
+      ansible.builtin.copy:
+        dest: "{{ lookup('ansible.builtin.env', 'NETFORGE_OUTPUT_FILE') }}"
+        mode: "0600"
+        content: >-
+          {{ {'mode': mode,
+              'backup': backup,
+              'unreserved_prefixes': sync_missing_prefixes,
+              'interfaces_changed': sync_changed_interfaces,
+              'skipped_devices': sync_skipped_devices} | to_json }}

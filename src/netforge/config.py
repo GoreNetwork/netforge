@@ -20,7 +20,7 @@ class Settings:
     api_token: str = field(default_factory=lambda: os.environ.get("NETFORGE_API_TOKEN", ""))
     nautobot_public_url: str = field(default_factory=lambda: os.environ.get("NAUTOBOT_PUBLIC_URL", ""))
     worker_engines: list[str] = field(
-        default_factory=lambda: _csv(os.environ.get("WORKER_ENGINES", "ansible,python"))
+        default_factory=lambda: _csv(os.environ.get("WORKER_ENGINES", "ansible,python,pipeline"))
     )
     heartbeat_seconds: int = field(default_factory=lambda: int(os.environ.get("WORKER_HEARTBEAT_SECONDS", "10")))
     stale_seconds: int = field(default_factory=lambda: int(os.environ.get("WORKER_STALE_SECONDS", "60")))

@@ -1,0 +1,17 @@
+title: Sync Nautobot from config backups
+description: Reads the latest config backup, reserves any IP ranges missing from Nautobot, and updates each device's interfaces there. Changes Nautobot only, never the devices.
+engine: pipeline
+steps:
+  - engine: python
+    entrypoint: parse_configs.py
+  - engine: ansible
+    entrypoint: playbook.yml
+timeout_seconds: 300
+variables:
+  - name: mode
+    label: Mode
+    type: choice
+    choices: [preview, apply]
+    required: false
+    default: preview
+    help: Preview lists the changes without making them.

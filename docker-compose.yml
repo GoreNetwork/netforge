@@ -57,12 +57,14 @@ services:
     stop_grace_period: 2m
     environment:
       <<: *netforge-env
-      WORKER_ENGINES: ansible,python
+      WORKER_ENGINES: ansible,python,pipeline
       ANSIBLE_NET_PASSWORD: ${LAB_DEVICE_PASSWORD:-}
       NAUTOBOT_URL: http://nautobot:8080
       NAUTOBOT_TOKEN: ${NAUTOBOT_API_TOKEN:?run scripts/init-env.py}
     volumes:
       - ./automations:/app/automations:ro
+      # A host folder, so backups outlive the worker and `down -v`.
+      - ${BACKUP_DIR:-./backups}:/backups
     depends_on:
       migrate: { condition: service_completed_successfully }
       queue: { condition: service_healthy }
