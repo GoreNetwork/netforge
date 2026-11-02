@@ -2,6 +2,14 @@
 # environment of the worker.
 plugin: networktocode.nautobot.gql_inventory
 validate_certs: false
+query:
+  devices:
+    _custom_field_data:
+    location: name
+    role: name
+    platform:
+      name:
+      napalm_driver:
 group_by:
   - location.name
   - role.name

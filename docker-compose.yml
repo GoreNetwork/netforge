@@ -58,6 +58,7 @@ services:
     environment:
       <<: *netforge-env
       WORKER_ENGINES: ansible,python
+      ANSIBLE_NET_PASSWORD: ${LAB_DEVICE_PASSWORD:-}
       NAUTOBOT_URL: http://nautobot:8080
       NAUTOBOT_TOKEN: ${NAUTOBOT_API_TOKEN:?run scripts/init-env.py}
     volumes:

@@ -183,6 +183,13 @@ Use `/livez` for liveness and `/healthz` for readiness. Set the worker's
 finishes its current task first. Add login to the GUI before exposing it beyond
 localhost, because it currently has none.
 
+## Device credentials
+
+Usernames live in Nautobot, in each device's SSH username field. The password
+goes in `.env` as `LAB_DEVICE_PASSWORD` and reaches Ansible as an environment
+variable, so it is never readable in Nautobot or committed. After changing it,
+run `docker compose up -d worker`. All devices currently share one password.
+
 ## Tests
 
 ```bash

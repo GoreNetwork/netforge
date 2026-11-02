@@ -1,0 +1,4 @@
+# The username comes from the device's SSH username field in Nautobot. The
+# password never goes in Nautobot: it comes from LAB_DEVICE_PASSWORD in .env.
+ansible_user: "{{ (_custom_field_data | default({})).ssh_username | default(omit) }}"
+ansible_password: "{{ lookup('ansible.builtin.env', 'ANSIBLE_NET_PASSWORD') | default(omit, true) }}"
