@@ -214,7 +214,18 @@ safe.
 Config backups are different: they go to a folder on the host, `./backups` by
 default, so they survive even `down -v`. Set `BACKUP_DIR` in `.env` to use another
 location. Each run writes `<date-time>/<device>.cfg`, with times in UTC. Backups
-contain device secrets, so restrict access to the folder. It is excluded from git.
+contain device secrets, so restrict access to the folder. It is excluded from git,
+apart from the demo backups described below.
+
+## Demo data in this repo
+
+So you can see what a working install holds, this repo includes the lab's `.env`
+and two example backups under `backups/`. They were added with `git add -f`, so
+new backups and any new `.env` stay ignored.
+
+These credentials are public demo values for a three-router lab. **Never reuse
+them.** For anything beyond the demo, delete `.env`, run `scripts/init-env.py` to
+generate new secrets, and set your own device password.
 
 ## Moving to Kubernetes
 
@@ -239,8 +250,8 @@ localhost, because it currently has none.
 
 Usernames live in Nautobot, in each device's SSH username field. The password
 goes in `.env` as `LAB_DEVICE_PASSWORD` and reaches Ansible as an environment
-variable, so it is never readable in Nautobot or committed. After changing it,
-run `docker compose up -d worker`. All devices currently share one password.
+variable, so it is never readable in Nautobot. After changing it, run
+`docker compose up -d worker`. All devices currently share one password.
 
 The account needs privilege 15 so that it can run `show running-config` and
 `write memory`.
