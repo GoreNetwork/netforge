@@ -14,6 +14,7 @@ from netforge.config import get_settings
 
 DEFAULT_TIMEOUT_SECONDS = 1800
 VARIABLE_TYPES = {"string", "integer", "choice"}
+PIPELINE_ENGINE = "pipeline"
 
 
 class CatalogError(Exception):
@@ -66,6 +67,12 @@ class Variable:
 
 
 @dataclass(frozen=True)
+class Step:
+    engine: str
+    entrypoint: str
+
+
+@dataclass(frozen=True)
 class TaskDefinition:
     name: str
     title: str
@@ -75,6 +82,7 @@ class TaskDefinition:
     directory: Path
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     variables: tuple[Variable, ...] = field(default_factory=tuple)
+    steps: tuple[Step, ...] = field(default_factory=tuple)
 
     def validate(self, submitted: dict[str, Any]) -> dict[str, Any]:
         """Return cleaned variables, or raise ValidationFailed listing every problem."""
@@ -116,13 +124,22 @@ def _load_definition(path: Path) -> TaskDefinition:
             title=raw["title"],
             description=raw.get("description", ""),
             engine=raw["engine"],
-            entrypoint=raw["entrypoint"],
+            entrypoint=raw.get("entrypoint", ""),
             directory=path.parent,
             timeout_seconds=raw.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS),
             variables=variables,
+            steps=tuple(Step(**item) for item in raw.get("steps", [])),
         )
     except (KeyError, TypeError, AttributeError, yaml.YAMLError) as exc:
         raise CatalogError(f"{path}: {exc}") from exc
+
+    if definition.engine == PIPELINE_ENGINE:
+        if not definition.steps:
+            raise CatalogError(f"{path}: a pipeline needs steps")
+        if any(step.engine == PIPELINE_ENGINE for step in definition.steps):
+            raise CatalogError(f"{path}: a pipeline can't contain a pipeline")
+    elif not definition.entrypoint:
+        raise CatalogError(f"{path}: entrypoint is required")
 
     for variable in variables:
         if variable.type not in VARIABLE_TYPES:

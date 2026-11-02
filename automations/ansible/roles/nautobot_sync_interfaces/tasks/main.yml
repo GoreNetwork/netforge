@@ -1,0 +1,97 @@
+---
+# Sets `sync_missing_prefixes`, `sync_changed_interfaces` and `sync_skipped_devices`.
+- name: Keep interfaces on devices that Nautobot knows
+  ansible.builtin.set_fact:
+    sync_known: "{{ sync_interfaces | selectattr('device', 'in', groups['all']) | list }}"
+    sync_skipped_devices: >-
+      {{ sync_interfaces | rejectattr('device', 'in', groups['all']) | map(attribute='device') | unique | list }}
+
+- name: List the IP ranges in use
+  ansible.builtin.set_fact:
+    sync_prefixes: >-
+      {{ sync_known | map(attribute='addresses') | flatten | map(attribute='prefix') | unique | list }}
+
+- name: Look up those ranges in Nautobot
+  ansible.builtin.uri:
+    url: >-
+      {{ nautobot_url }}/api/ipam/prefixes/?limit=1000&{{
+      sync_prefixes | map('urlencode') | map('regex_replace', '^', 'prefix=') | join('&') }}
+    headers:
+      Authorization: "Token {{ nautobot_token }}"
+      Accept: application/json
+  register: sync_existing
+  when: sync_prefixes | length > 0
+
+# Found by lookup rather than `state: present` on every range, which would
+# change the status of ranges Nautobot already holds.
+- name: Work out which ranges are unreserved
+  ansible.builtin.set_fact:
+    sync_missing_prefixes: >-
+      {{ sync_prefixes | difference(sync_existing.json.results | default([]) | map(attribute='prefix') | list) }}
+
+- name: Show the unreserved ranges
+  ansible.builtin.debug:
+    msg: "Unreserved: {{ sync_missing_prefixes | join(', ') or 'none' }}"
+
+- name: Reserve the unreserved ranges
+  networktocode.nautobot.prefix:
+    url: "{{ nautobot_url }}"
+    token: "{{ nautobot_token }}"
+    prefix: "{{ item }}"
+    namespace: "{{ sync_namespace }}"
+    type: Network
+    status: Reserved
+    description: Found in a device config backup
+    state: present
+  loop: "{{ sync_missing_prefixes }}"
+  when: not sync_preview | bool
+
+- name: Update the interfaces
+  networktocode.nautobot.device_interface:
+    url: "{{ nautobot_url }}"
+    token: "{{ nautobot_token }}"
+    device: "{{ item.device }}"
+    name: "{{ item.name }}"
+    type: "{{ item.type }}"
+    enabled: "{{ item.enabled }}"
+    description: "{{ item.description }}"
+    status: Active
+    state: present
+  loop: "{{ sync_known }}"
+  loop_control:
+    label: "{{ item.device }} {{ item.name }}"
+  check_mode: "{{ sync_preview | bool }}"
+  register: sync_interface_results
+
+- name: Count the changed interfaces
+  ansible.builtin.set_fact:
+    sync_changed_interfaces: "{{ sync_interface_results.results | selectattr('changed') | list | length }}"
+
+- name: Add the IP addresses
+  networktocode.nautobot.ip_address:
+    url: "{{ nautobot_url }}"
+    token: "{{ nautobot_token }}"
+    address: "{{ item.1.address }}"
+    namespace: "{{ sync_namespace }}"
+    status: Active
+    state: present
+  loop: "{{ sync_known | subelements('addresses') }}"
+  loop_control:
+    label: "{{ item.0.device }} {{ item.0.name }} {{ item.1.address }}"
+  when: not sync_preview | bool
+
+- name: Assign the IP addresses to their interfaces
+  networktocode.nautobot.device_interface:
+    url: "{{ nautobot_url }}"
+    token: "{{ nautobot_token }}"
+    device: "{{ item.0.device }}"
+    name: "{{ item.0.name }}"
+    ip_addresses:
+      state: merge
+      objects:
+        - ip_address: "{{ item.1.address }}"
+    state: present
+  loop: "{{ sync_known | subelements('addresses') }}"
+  loop_control:
+    label: "{{ item.0.device }} {{ item.0.name }} {{ item.1.address }}"
+  when: not sync_preview | bool

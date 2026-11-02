@@ -89,6 +89,26 @@ Always use `pattern` on free-text variables. Your playbook or script receives
 this text as data, but anything it builds from that text, such as a shell command
 or device config, is only as safe as the validation.
 
+## Tasks with several steps
+
+To use a different engine for each stage, set the engine to `pipeline` and list
+the steps. `sync_nautobot_from_backups` parses configs in Python, then makes its
+Nautobot API calls with Ansible:
+
+```yaml
+engine: pipeline
+steps:
+  - engine: python
+    entrypoint: parse_configs.py
+  - engine: ansible
+    entrypoint: playbook.yml
+```
+
+Each step's result is added to the variables of the steps after it, so the
+playbook receives what the script wrote to `NETFORGE_OUTPUT_FILE` as Ansible
+variables. The first failure stops the task, and the last step's result becomes
+the task's result. `timeout_seconds` applies to each step separately.
+
 ## Sharing steps between tasks
 
 Put anything used by more than one task in a role under
